@@ -165,6 +165,14 @@ export function ColorSection({ form, t }: ColorSectionProps): any {
   const hueLock = React.useRef<number | null>(null)
   const draftRef = React.useRef(draft)
   draftRef.current = draft
+  /**
+   * Set while this section's own write is in flight. An accepted write moves
+   * the namespace revision, which is the same signal the adopt effect below
+   * watches — so without this flag the effect would treat the save's own
+   * revision bump as "the Host overrode the editor" and clear the
+   * confirmation the save had just produced.
+   */
+  const pendingWrite = React.useRef(false)
 
   // The Host is the source of truth: adopt it whenever the namespace moves.
   React.useEffect(() => {
@@ -173,7 +181,11 @@ export function ColorSection({ form, t }: ColorSectionProps): any {
     setDraft(draftFrom(snapshot.value))
     setFollowSeat(snapshot.value?.followSeat !== false)
     setError(null)
-    setSaved(false)
+    // A revision this section caused is the save landing, not an outside
+    // edit: keep the confirmation. Any other move really is the Host
+    // replacing the draft, so the stale note goes.
+    if (pendingWrite.current) pendingWrite.current = false
+    else setSaved(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- revision is the change identity
   }, [ready, snapshot.revision])
 
@@ -253,6 +265,7 @@ export function ColorSection({ form, t }: ColorSectionProps): any {
     if (busy) return
     setBusy(true)
     setError(null)
+    pendingWrite.current = true
     try {
       const fields: [string, string][] = [
         ['mode', draft.mode],
@@ -266,18 +279,26 @@ export function ColorSection({ form, t }: ColorSectionProps): any {
           fields.push([key, normalizeHex(draft.custom[key]) ?? ''])
         }
       }
-      for (const [field, value] of fields) {
-        const accepted = await form.set(field, value)
-        if (!accepted) {
-          setError(t('color.saveFailed'))
-          return
-        }
+      // ONE atomic mutation, not one write per field. The Host bumps the
+      // namespace revision on every accepted write, and this component adopts
+      // the Host value whenever the revision moves — so a per-field loop
+      // re-derived the draft (and cleared the "saved" note) once per field,
+      // and a failure halfway through left a half-applied palette on disk.
+      // A single `mutate` validates and persists the whole section at once and
+      // moves the revision exactly once.
+      const accepted = await form.mutate(
+        fields.map(([field, value]) => ({ op: 'set', path: [field], value })),
+      )
+      if (!accepted) {
+        setError(t('color.saveFailed'))
+        return
       }
       setSaved(true)
       setPalette(resolveDraft(draftRef.current), followSeat)
     } catch (error: any) {
       setError(error?.message ?? String(error))
     } finally {
+      pendingWrite.current = false
       setBusy(false)
     }
   }
@@ -291,21 +312,25 @@ export function ColorSection({ form, t }: ColorSectionProps): any {
     setSaved(false)
     setBusy(true)
     setError(null)
+    pendingWrite.current = true
     setPalette(resolveDraft(next), followSeat)
     try {
       const fields: [string, string][] = [['mode', 'auto'], ['master', DEFAULT_MASTER]]
       for (const key of SLOT_KEYS_ORDER) fields.push([key, ''])
-      for (const [field, value] of fields) {
-        const accepted = await form.set(field, value)
-        if (!accepted) {
-          setError(t('color.saveFailed'))
-          return
-        }
+      // Same single-mutation contract as `apply`: a reset is eight field
+      // writes, and doing them one at a time moved the revision eight times.
+      const accepted = await form.mutate(
+        fields.map(([field, value]) => ({ op: 'set', path: [field], value })),
+      )
+      if (!accepted) {
+        setError(t('color.saveFailed'))
+        return
       }
       setSaved(true)
     } catch (error: any) {
       setError(error?.message ?? String(error))
     } finally {
+      pendingWrite.current = false
       setBusy(false)
     }
   }

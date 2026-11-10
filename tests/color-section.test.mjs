@@ -34,14 +34,41 @@ function fakeDocument() {
 async function mountSection(t, { value = { mode: 'auto', master: '#679EFE' } } = {}) {
   const document = fakeDocument()
   const writes = []
-  const snapshot = { status: 'ready', value, revision: 1, writable: true, base: undefined, user: undefined }
+  /**
+   * The real form is a snapshot store: every accepted write REPLACES the
+   * snapshot object, and `useSyncExternalStore` compares by identity. Mutating
+   * one object in place would leave React convinced nothing changed, so the
+   * fixture publishes a fresh object per write exactly like the Host does.
+   */
+  let snapshot = { status: 'ready', value, revision: 1, writable: true, base: undefined, user: undefined }
   const listeners = new Set()
+  const publish = (next) => {
+    snapshot = next
+    for (const listener of listeners) listener()
+  }
+  /**
+   * Mirror the Host contract the section actually depends on: an accepted
+   * write lands atomically, moves the namespace revision, and republishes the
+   * snapshot. `failNext` makes the next mutation refuse without touching
+   * either, which is what a rejected Host write looks like.
+   */
+  const commit = (ops) => {
+    if (failNext) return false
+    const next = { ...snapshot.value }
+    for (const op of ops) {
+      writes.push([op.path[0], op.value])
+      next[op.path[0]] = op.value
+    }
+    publish({ ...snapshot, value: next, revision: snapshot.revision + 1 })
+    return true
+  }
+  let failNext = false
   const form = {
     getSnapshot: () => snapshot,
     subscribe: (listener) => { listeners.add(listener); return () => listeners.delete(listener) },
-    set: async (field, next) => { writes.push([field, next]); return true },
+    set: async (field, next) => commit([{ op: 'set', path: [field], value: next }]),
     unset: async () => true,
-    mutate: async () => true,
+    mutate: async (ops) => commit(ops),
   }
   let registration
   const sub = {
@@ -80,7 +107,12 @@ async function mountSection(t, { value = { mode: 'auto', master: '#679EFE' } } =
     tree = TestRenderer.create(React.createElement(registration.component, { view: 'page' }))
   })
   t.after(() => act(() => tree.unmount()))
-  return { tree, document, writes, form, listeners }
+  return {
+    tree, document, writes, form, listeners,
+    failNextWrite: () => { failNext = true },
+    /** Simulate an edit made outside this section (another tab, the Host). */
+    externalRevision: () => publish({ ...snapshot, revision: snapshot.revision + 1 }),
+  }
 }
 
 function text(node) {
@@ -141,6 +173,42 @@ test('applying writes the mode and all six slots to the settings form', async t 
   assert.equal(written.dialogFont, '#F5D061')
   assert.equal(written.maxDot, '', 'unset slots clear so they keep following the master')
   assert.equal(ui.writes.length, 8)
+})
+
+test('an apply is one atomic mutation, so the revision moves exactly once', async t => {
+  const ui = await mountSection(t)
+  const [, custom] = ui.tree.root.findAll((node) => node.type === 'input' && node.props.type === 'radio')
+  await act(async () => custom.props.onChange())
+  const before = ui.form.getSnapshot().revision
+  const apply = ui.tree.root.findByProps({ className: 'sk5c-apply' })
+  await act(async () => { await apply.props.onClick() })
+  assert.equal(ui.writes.length, 8, 'all eight fields still land')
+  assert.equal(ui.form.getSnapshot().revision, before + 1, 'one write, one revision')
+})
+
+test('the saved note survives the revision bump its own save causes', async t => {
+  const ui = await mountSection(t)
+  const apply = ui.tree.root.findByProps({ className: 'sk5c-apply' })
+  await act(async () => { await apply.props.onClick() })
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)) })
+  const note = ui.tree.root.findAll(
+    (node) => typeof node.props?.className === 'string' && node.props.className.includes('sk5c-note'),
+  )
+  assert.equal(note.length, 1)
+  assert.match(text(note[0].children), /color\.saved/, 'the confirmation must not be cleared by its own write')
+})
+
+test('an outside revision change still clears the saved note', async t => {
+  const ui = await mountSection(t)
+  const apply = ui.tree.root.findByProps({ className: 'sk5c-apply' })
+  await act(async () => { await apply.props.onClick() })
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)) })
+  // Someone else edits the namespace: the note is stale and must go.
+  await act(async () => { ui.externalRevision() })
+  const note = ui.tree.root.findAll(
+    (node) => typeof node.props?.className === 'string' && node.props.className.includes('sk5c-note'),
+  )
+  assert.match(text(note[0].children), /color\.previewHint/)
 })
 
 test('an invalid code blocks the save instead of writing a broken colour', async t => {
