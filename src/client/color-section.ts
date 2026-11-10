@@ -150,7 +150,22 @@ export function ColorSection({ form, t }: ColorSectionProps): any {
   const [draft, setDraft] = React.useState<Draft>(() => draftFrom(snapshot.value))
   const [target, setTarget] = React.useState<SlotKey>('dialogFont')
   const [text, setText] = React.useState('')
-  const [error, setError] = React.useState<string | null>(null)
+  /**
+   * Two failures with different meanings, kept apart on purpose.
+   *
+   * `formatError` is about the code field: the typed string is not a colour.
+   * It marks the input invalid and blocks Apply, because there is nothing
+   * valid to save.
+   *
+   * `saveError` is about the Host: the write was refused or threw. The draft
+   * is perfectly valid, so the field keeps its normal styling and Apply stays
+   * enabled — retrying the same value is the whole point. Folding both into
+   * one state (as this section used to) left Apply permanently disabled after
+   * a refused write and painted the code field red, blaming the user's input
+   * for a Host failure.
+   */
+  const [formatError, setFormatError] = React.useState<string | null>(null)
+  const [saveError, setSaveError] = React.useState<string | null>(null)
   const [saved, setSaved] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   /** Seat-follow switch; mirrors the stored value and updates optimistically. */
@@ -180,7 +195,10 @@ export function ColorSection({ form, t }: ColorSectionProps): any {
     hueLock.current = null
     setDraft(draftFrom(snapshot.value))
     setFollowSeat(snapshot.value?.followSeat !== false)
-    setError(null)
+    // A save failure is about the write that just landed, not about the value
+    // the Host now serves, so adopting a new Host value retires it. The format
+    // error belongs to the code field and is cleared where that field changes.
+    setSaveError(null)
     // A revision this section caused is the save landing, not an outside
     // edit: keep the confirmation. Any other move really is the Host
     // replacing the draft, so the stale note goes.
@@ -213,7 +231,9 @@ export function ColorSection({ form, t }: ColorSectionProps): any {
   // Keep the text field showing the colour being edited, unless it has focus.
   React.useEffect(() => {
     setText(activeHex)
-    setError(null)
+    // The field now holds a valid colour, so any complaint about its format
+    // is stale. A save failure is unrelated and stays until the next write.
+    setFormatError(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- follows the edited colour only
   }, [activeHex])
 
@@ -264,7 +284,7 @@ export function ColorSection({ form, t }: ColorSectionProps): any {
   const apply = async () => {
     if (busy) return
     setBusy(true)
-    setError(null)
+    setSaveError(null)
     pendingWrite.current = true
     try {
       const fields: [string, string][] = [
@@ -290,13 +310,13 @@ export function ColorSection({ form, t }: ColorSectionProps): any {
         fields.map(([field, value]) => ({ op: 'set', path: [field], value })),
       )
       if (!accepted) {
-        setError(t('color.saveFailed'))
+        setSaveError(t('color.saveFailed'))
         return
       }
       setSaved(true)
       setPalette(resolveDraft(draftRef.current), followSeat)
     } catch (error: any) {
-      setError(error?.message ?? String(error))
+      setSaveError(error?.message ?? String(error))
     } finally {
       pendingWrite.current = false
       setBusy(false)
@@ -311,7 +331,7 @@ export function ColorSection({ form, t }: ColorSectionProps): any {
     setDraft(next)
     setSaved(false)
     setBusy(true)
-    setError(null)
+    setSaveError(null)
     pendingWrite.current = true
     setPalette(resolveDraft(next), followSeat)
     try {
@@ -323,12 +343,12 @@ export function ColorSection({ form, t }: ColorSectionProps): any {
         fields.map(([field, value]) => ({ op: 'set', path: [field], value })),
       )
       if (!accepted) {
-        setError(t('color.saveFailed'))
+        setSaveError(t('color.saveFailed'))
         return
       }
       setSaved(true)
     } catch (error: any) {
-      setError(error?.message ?? String(error))
+      setSaveError(error?.message ?? String(error))
     } finally {
       pendingWrite.current = false
       setBusy(false)
@@ -339,18 +359,19 @@ export function ColorSection({ form, t }: ColorSectionProps): any {
   const toggleFollowSeat = async () => {
     const next = !followSeat
     setFollowSeat(next)
+    setSaveError(null)
     setPalette(resolveDraft(draftRef.current), next)
     try {
       const accepted = await form.set('followSeat', next)
       if (!accepted) {
         setFollowSeat(!next)
         setPalette(resolveDraft(draftRef.current), !next)
-        setError(t('color.saveFailed'))
+        setSaveError(t('color.saveFailed'))
       }
     } catch (error: any) {
       setFollowSeat(!next)
       setPalette(resolveDraft(draftRef.current), !next)
-      setError(error?.message ?? String(error))
+      setSaveError(error?.message ?? String(error))
     }
   }
 
@@ -526,15 +547,16 @@ export function ColorSection({ form, t }: ColorSectionProps): any {
           React.createElement('div', { className: 'sk5c-code-row' },
             React.createElement('input', {
               id: 'sk5c-code-input',
-              className: 'sk5c-input' + (error === null ? '' : ' is-error'),
+              className: 'sk5c-input' + (formatError === null ? '' : ' is-error'),
               value: text,
               spellCheck: false,
+              'aria-invalid': formatError !== null,
               onChange: (event: any) => {
                 setText(event.target.value)
                 const normalized = normalizeHex(event.target.value)
-                if (normalized === null) setError(t('color.invalid'))
+                if (normalized === null) setFormatError(t('color.invalid'))
                 else {
-                  setError(null)
+                  setFormatError(null)
                   setActive(normalized)
                 }
               },
@@ -543,7 +565,9 @@ export function ColorSection({ form, t }: ColorSectionProps): any {
               },
             }),
             React.createElement('button', {
-              type: 'button', className: 'sk5c-apply', disabled: busy || error !== null,
+              // Only an unparseable code blocks the save. A refused write is
+              // retryable with the same value, so it must not disable this.
+              type: 'button', className: 'sk5c-apply', disabled: busy || formatError !== null,
               onClick: () => void apply(),
             }, busy ? t('color.saving') : t('color.apply')),
           ),
@@ -554,11 +578,13 @@ export function ColorSection({ form, t }: ColorSectionProps): any {
             onClick: () => void reset(),
           }, t('color.reset')),
         ),
-        error !== null
-          ? React.createElement('p', { className: 'sk5c-note is-error' }, error)
-          : saved
-            ? React.createElement('p', { className: 'sk5c-note' }, t('color.saved'))
-            : React.createElement('p', { className: 'sk5c-note' }, t('color.previewHint')),
+        formatError !== null
+          ? React.createElement('p', { className: 'sk5c-note is-error' }, formatError)
+          : saveError !== null
+            ? React.createElement('p', { className: 'sk5c-note is-error' }, saveError)
+            : saved
+              ? React.createElement('p', { className: 'sk5c-note' }, t('color.saved'))
+              : React.createElement('p', { className: 'sk5c-note' }, t('color.previewHint')),
       ),
     ),
   )

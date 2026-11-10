@@ -49,11 +49,15 @@ async function mountSection(t, { value = { mode: 'auto', master: '#679EFE' } } =
   /**
    * Mirror the Host contract the section actually depends on: an accepted
    * write lands atomically, moves the namespace revision, and republishes the
-   * snapshot. `failNext` makes the next mutation refuse without touching
-   * either, which is what a rejected Host write looks like.
+   * snapshot. `failNext` makes the NEXT mutation refuse without touching
+   * either, which is what a rejected Host write looks like; it is one-shot so
+   * a retry can be observed succeeding.
    */
   const commit = (ops) => {
-    if (failNext) return false
+    if (failNext) {
+      failNext = false
+      return false
+    }
     const next = { ...snapshot.value }
     for (const op of ops) {
       writes.push([op.path[0], op.value])
@@ -219,6 +223,35 @@ test('an invalid code blocks the save instead of writing a broken colour', async
   assert.equal(apply.props.disabled, true)
   assert.match(text(ui.tree.toJSON()), /color\.invalid/)
   assert.equal(ui.writes.length, 0)
+})
+
+test('a refused save stays retryable instead of disabling Apply', async t => {
+  const ui = await mountSection(t)
+  ui.failNextWrite()
+  const apply = () => ui.tree.root.findByProps({ className: 'sk5c-apply' })
+  await act(async () => { await apply().props.onClick() })
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)) })
+  assert.match(text(ui.tree.toJSON()), /color\.saveFailed/, 'the failure is reported')
+  assert.equal(apply().props.disabled, false, 'a Host refusal must not lock the button')
+  const input = ui.tree.root.findByProps({ id: 'sk5c-code-input' })
+  assert.equal(input.props.className.includes('is-error'), false, 'the code field is not at fault')
+  assert.equal(input.props['aria-invalid'], false)
+  // Retrying the very same value now succeeds.
+  await act(async () => { await apply().props.onClick() })
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)) })
+  assert.match(text(ui.tree.toJSON()), /color\.saved/)
+})
+
+test('a format error and a save failure are reported as different problems', async t => {
+  const ui = await mountSection(t)
+  const input = () => ui.tree.root.findByProps({ id: 'sk5c-code-input' })
+  await act(async () => input().props.onChange({ target: { value: '#12' } }))
+  assert.equal(input().props['aria-invalid'], true, 'a bad code marks the field')
+  assert.match(text(ui.tree.toJSON()), /color\.invalid/)
+  // Typing a valid colour clears the format complaint but not a save failure.
+  await act(async () => input().props.onChange({ target: { value: '#F5D061' } }))
+  assert.equal(input().props['aria-invalid'], false)
+  assert.doesNotMatch(text(ui.tree.toJSON()), /color\.invalid/)
 })
 
 test('stepping the hue to the far right keeps the thumb there instead of wrapping', async t => {
