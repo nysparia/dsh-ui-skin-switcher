@@ -114,8 +114,17 @@ async function mountSection(t, { value = { mode: 'auto', master: '#679EFE' } } =
   return {
     tree, document, writes, form, listeners,
     failNextWrite: () => { failNext = true },
-    /** Simulate an edit made outside this section (another tab, the Host). */
-    externalRevision: () => publish({ ...snapshot, revision: snapshot.revision + 1 }),
+    /**
+     * Simulate an edit made outside this section (another tab, the Host). A
+     * real outside edit changes the stored colours, so the fixture does too —
+     * a bare revision bump with identical colours is the seat-follow switch's
+     * own signature and must NOT be treated as an outside edit.
+     */
+    externalEdit: (next = { master: '#FF5B4A' }) => publish({
+      ...snapshot,
+      value: { ...snapshot.value, ...next },
+      revision: snapshot.revision + 1,
+    }),
   }
 }
 
@@ -208,7 +217,7 @@ test('an outside revision change still clears the saved note', async t => {
   await act(async () => { await apply.props.onClick() })
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)) })
   // Someone else edits the namespace: the note is stale and must go.
-  await act(async () => { ui.externalRevision() })
+  await act(async () => { ui.externalEdit() })
   const note = ui.tree.root.findAll(
     (node) => typeof node.props?.className === 'string' && node.props.className.includes('sk5c-note'),
   )
@@ -283,6 +292,26 @@ test('the follow switch persists and drives the seat attribute', async t => {
   })
   assert.deepEqual(ui.writes[0], ['followSeat', false])
   assert.equal(ui.document.attributes.has('data-sk5-follow-seat'), false)
+})
+
+test('toggling the follow switch keeps unsaved colour edits', async t => {
+  const ui = await mountSection(t)
+  const [, custom] = ui.tree.root.findAll((node) => node.type === 'input' && node.props.type === 'radio')
+  await act(async () => custom.props.onChange())
+  await act(async () => rows(ui.tree)[0].props.onClick())
+  const input = () => ui.tree.root.findByProps({ id: 'sk5c-code-input' })
+  await act(async () => input().props.onChange({ target: { value: '#F5D061' } }))
+  assert.equal(ui.document.properties.get('--sk5-c-dialog'), '#F5D061')
+  // The switch writes its own field, which moves the revision. That must not
+  // be mistaken for the Host replacing the palette.
+  const sw = ui.tree.root.findByProps({ role: 'switch' })
+  await act(async () => {
+    sw.props.onClick()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  })
+  assert.equal(ui.document.properties.get('--sk5-c-dialog'), '#F5D061', 'the draft survives')
+  assert.equal(input().props.value, '#F5D061', 'the field still shows the edit')
+  assert.equal(ui.tree.root.findByProps({ role: 'switch' }).props['aria-checked'], false)
 })
 
 test('reset restores the shipped blue and clears every custom slot', async t => {

@@ -60,6 +60,19 @@ function emptyCustom(): Record<SlotKey, string> {
   return custom
 }
 
+/**
+ * Whether two drafts describe the same colours. Used to tell a revision bump
+ * that only moved the seat-follow switch (colours identical) from one that
+ * really replaced the palette.
+ * @param a - first draft.
+ * @param b - second draft.
+ * @returns true when mode, master and every slot agree.
+ */
+function sameDraft(a: Draft, b: Draft): boolean {
+  if (a.mode !== b.mode || a.master !== b.master) return false
+  return SLOT_KEYS_ORDER.every((key) => a.custom[key] === b.custom[key])
+}
+
 /** Resolve a draft to the six colours the composer UI shows. */
 export function resolveDraft(draft: Draft): PaletteColors {
   const derived = deriveFromMaster(draft.master) ?? /** @type {PaletteColors} */ (deriveFromMaster(DEFAULT_MASTER))
@@ -188,12 +201,29 @@ export function ColorSection({ form, t }: ColorSectionProps): any {
    * confirmation the save had just produced.
    */
   const pendingWrite = React.useRef(false)
+  /**
+   * The colour half of the Host value this section last adopted. The
+   * `followSeat` switch writes its own field, which moves the revision without
+   * touching any colour — and re-adopting the draft for that would silently
+   * throw away edits the user had not applied yet. Comparing the colour half
+   * tells the two apart: unchanged colours mean only the switch moved, so the
+   * draft is the user's and stays.
+   */
+  const adoptedColors = React.useRef<Draft | null>(null)
 
   // The Host is the source of truth: adopt it whenever the namespace moves.
   React.useEffect(() => {
     if (!ready) return
+    const incoming = draftFrom(snapshot.value)
+    const previous = adoptedColors.current
+    adoptedColors.current = incoming
+    // Only the seat-follow switch moved: keep whatever the user is editing.
+    if (previous !== null && sameDraft(previous, incoming)) {
+      setFollowSeat(snapshot.value?.followSeat !== false)
+      return
+    }
     hueLock.current = null
-    setDraft(draftFrom(snapshot.value))
+    setDraft(incoming)
     setFollowSeat(snapshot.value?.followSeat !== false)
     // A save failure is about the write that just landed, not about the value
     // the Host now serves, so adopting a new Host value retires it. The format
