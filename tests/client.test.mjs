@@ -49,18 +49,20 @@ async function mount(t, { currentModel = 'deepseek-flash', outcome = { ok: true 
       { id: 'deepseek-official', name: 'DeepSeek', models: [official] },
       { id: 'custom', name: 'Custom API', models: [thirdParty] },
     ],
+    failures: [],
     status: 'ready', error: null,
   }
   const publish = next => {
     snapshot = next
     for (const notify of subscribers) notify()
   }
+  const loads = []
   const directory = {
     store: {
       getSnapshot: () => snapshot,
       subscribe: notify => { subscribers.add(notify); return () => subscribers.delete(notify) },
     },
-    load: async () => snapshot,
+    load: async () => { loads.push(snapshot); return snapshot },
     select: async selection => {
       selections.push(JSON.parse(JSON.stringify(selection)))
       if (outcome instanceof Error) throw outcome
@@ -126,7 +128,7 @@ async function mount(t, { currentModel = 'deepseek-flash', outcome = { ok: true 
   }) })
   t.after(() => { act(() => tree.unmount()); assert.equal(subscribers.size, 0); assert.equal(samples.size, 0) })
   return {
-    tree, selections, measuredNodes, samples,
+    tree, selections, measuredNodes, samples, loads,
     async fontLoaded(next) { fontHeights = next; await act(async () => fonts.dispatchEvent(new Event('loadingdone'))) },
     official,
     snapshot: () => snapshot,
@@ -281,4 +283,27 @@ test('a Remote envelope failure remains visible for retry', async t => {
   await act(async () => ui.tree.root.findAllByProps({ role: 'menuitem' })[1].props.onClick())
   assert.match(text(ui.tree.toJSON()), /session\/writer-held: Session in use/)
   assert.equal(ui.tree.root.findAllByProps({ role: 'menu' }).length, 1)
+})
+
+test('a provider whose catalog failed is listed with a retry control', async t => {
+  const ui = await mount(t)
+  await ui.update({
+    ...ui.snapshot(),
+    failures: [{ id: 'custom', name: 'Custom API', message: 'connection refused' }],
+  })
+  await ui.showModels()
+  const rendered = text(ui.tree.toJSON())
+  assert.match(rendered, /Custom API/, 'the failed provider is still named')
+  assert.match(rendered, /connection refused/, 'the reason is shown, not swallowed')
+  const retry = ui.tree.root.findAllByProps({ className: 'sk5-retry' })
+  assert.equal(retry.length, 1)
+  const before = ui.loads.length
+  await act(async () => retry[0].props.onClick())
+  assert.ok(ui.loads.length > before, 'retry asks the directory to load again')
+})
+
+test('a healthy catalog renders no failure rows', async t => {
+  const ui = await mount(t)
+  await ui.showModels()
+  assert.equal(ui.tree.root.findAllByProps({ className: 'sk5-retry' }).length, 0)
 })

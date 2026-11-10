@@ -40,6 +40,8 @@ const DICTS: Record<'zh' | 'en', Record<string, string>> = {
     'menu.models': '模型',
     'status.loading': '加载中…',
     'status.noModels': '暂无可用模型',
+    'status.groupFailed': '加载失败',
+    'status.retry': '重试',
     'help.aria': '思考强度说明',
     'help.text': '调节模型推理深度，低强度回复快、内容简洁；高强度思考更全面，适合复杂问题，响应会稍慢。',
     'color.title': '颜色切换器',
@@ -82,6 +84,8 @@ const DICTS: Record<'zh' | 'en', Record<string, string>> = {
     'menu.models': 'Models',
     'status.loading': 'Loading…',
     'status.noModels': 'No models available',
+    'status.groupFailed': 'Failed to load',
+    'status.retry': 'Retry',
     'help.aria': 'About reasoning effort',
     'help.text': 'Adjusts how deeply the model reasons: lower effort answers faster and more concisely, while higher effort thinks more thoroughly for complex problems and responds a little slower.',
     'color.title': 'Colours',
@@ -272,6 +276,14 @@ const CSS =
   '.sk5-check{font-size:12px;color:var(--dsw-alias-brand-primary);}' +
   '.sk5-status{padding:14px;font-size:12.5px;opacity:.65;text-align:center;}' +
   '.sk5-err{padding:8px 4px 0;font-size:11.5px;color:var(--dsw-alias-state-error-primary);text-align:left;}' +
+  /* A provider whose catalog failed: named, explained, and retryable. */
+  '.sk5-fail{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:12px;}' +
+  '.sk5-failText{display:flex;flex-direction:column;min-width:0;flex:1;text-align:left;}' +
+  '.sk5-failName{font-size:12.5px;color:var(--dsw-alias-label-primary);}' +
+  '.sk5-failMsg{font-size:11px;color:var(--dsw-alias-state-error-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+  '.sk5-retry{flex:none;padding:3px 9px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-primary);font-size:11.5px;cursor:pointer;}' +
+  '.sk5-retry:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-label-primary) 10%,transparent);}' +
+  '.sk5-retry:disabled{opacity:.55;cursor:not-allowed;}' +
   '.sk5-effort{width:225px;max-width:calc(100vw - 32px);box-sizing:border-box;padding:10px 12px 12px;}' +
   '.sk5-titleRow{display:flex;align-items:center;gap:8px;margin-bottom:8px;}' +
   '.sk5-effortLabel{font-size:13px;font-weight:600;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));}' +
@@ -719,6 +731,13 @@ export function apply(ctx: any): void {
       /** Selection failures are local; catalog failures live on the shared store. */
       const shownError = error !== null ? error : state.error
       const loaded = state.status !== 'idle'
+      /**
+       * Providers whose catalog failed to load. The official seat lists these
+       * with a retry control; without them a failed provider simply vanishes
+       * from the menu, which reads as "this vendor has no models" rather than
+       * "this vendor could not be reached".
+       */
+      const failures = state.failures ?? []
       const curGroup = current === null ? undefined : groups.find((g: any) => g.id === current.provider)
       const curModel = current === null ? undefined : findModel(groups, current.provider, current.model)
       const modelLabel = curModel !== undefined ? curModel.name : (current !== null && current.model !== '' ? current.model : tr('trigger.fallbackModel'))
@@ -1028,6 +1047,16 @@ export function apply(ctx: any): void {
                 !loaded && shownError === null ? React.createElement('div', { className: 'sk5-status' }, tr('status.loading')) : null,
                 shownError !== null ? React.createElement('div', { className: 'sk5-err' }, shownError) : null,
                 loaded && groups.length === 0 ? React.createElement('div', { className: 'sk5-status' }, tr('status.noModels')) : null,
+                loaded ? failures.map((f: any) => React.createElement('div', { key: 'fail:' + f.id, className: 'sk5-fail' },
+                  React.createElement('span', { className: 'sk5-failText' },
+                    React.createElement('span', { className: 'sk5-failName' }, f.name),
+                    React.createElement('span', { className: 'sk5-failMsg' }, f.message),
+                  ),
+                  React.createElement('button', {
+                    type: 'button', className: 'sk5-retry', disabled: busy,
+                    onClick: () => load(),
+                  }, tr('status.retry')),
+                )) : null,
                 loaded ? groups.map((g: any) => React.createElement('div', { key: g.id },
                   React.createElement('div', { className: 'sk5-group' }, g.name),
                   g.models.map((m: any) => {
