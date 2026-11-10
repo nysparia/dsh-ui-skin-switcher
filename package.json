@@ -56,6 +56,8 @@
     "lib/client.js",
     "cordis.patch.yml",
     "CHANGELOG.md",
-    "icon.png"
+    "icon.png",
+    "THIRD_PARTY_NOTICES.md",
+    "docs/OFL-SpaceGrotesk.txt"
   ]
 }

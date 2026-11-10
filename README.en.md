@@ -81,3 +81,7 @@ Why follow the vendor's documentation? To keep declarations accurate — **accur
 ## License
 
 [MIT](./LICENSE)
+
+The plugin embeds a subset of the Space Grotesk typeface for the popover's
+typography, licensed under the [SIL Open Font License 1.1](./docs/OFL-SpaceGrotesk.txt).
+See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for the full attribution.
