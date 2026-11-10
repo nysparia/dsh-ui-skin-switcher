@@ -128,7 +128,7 @@ async function mount(t, { currentModel = 'deepseek-flash', outcome = { ok: true 
   }) })
   t.after(() => { act(() => tree.unmount()); assert.equal(subscribers.size, 0); assert.equal(samples.size, 0) })
   return {
-    tree, selections, measuredNodes, samples, loads,
+    tree, selections, measuredNodes, samples, loads, document: testDocument,
     async fontLoaded(next) { fontHeights = next; await act(async () => fonts.dispatchEvent(new Event('loadingdone'))) },
     official,
     snapshot: () => snapshot,
@@ -331,4 +331,41 @@ test('a model without a badge renders its name alone', async t => {
   await ui.showModels()
   assert.equal(ui.tree.root.findAllByProps({ className: 'sk5-badgeWrap' }).length, 0)
   assert.match(text(ui.tree.toJSON()), /DeepSeek-V4\.1-Flash/)
+})
+
+test('the effort track is a keyboard-operable slider', async t => {
+  const ui = await mount(t)
+  await act(async () => ui.tree.root.findByProps({ className: 'sk5-trigger sk5-triggerEffort' }).props.onClick())
+  const track = () => ui.tree.root.findByProps({ className: 'sk5-track' })
+  assert.equal(track().props.role, 'slider')
+  assert.equal(track().props.tabIndex, 0, 'the track is reachable by Tab')
+  assert.equal(track().props['aria-valuemin'], 0)
+  assert.equal(track().props['aria-valuemax'], 1)
+  assert.equal(track().props['aria-valuenow'], 0, 'the current effort is reported')
+  assert.equal(track().props['aria-valuetext'], 'Off')
+  // ArrowRight steps to the next level and submits it, like releasing a drag.
+  await act(async () => track().props.onKeyDown({ key: 'ArrowRight', preventDefault() {} }))
+  assert.deepEqual(ui.selections.at(-1), {
+    provider: 'deepseek-official', model: 'deepseek-flash', reasoningEffort: 'max',
+  })
+  // End jumps to the last level; already there, so nothing new is submitted.
+  const before = ui.selections.length
+  await act(async () => track().props.onKeyDown({ key: 'End', preventDefault() {} }))
+  assert.equal(ui.selections.length, before)
+  // Home goes back to the first level.
+  await act(async () => track().props.onKeyDown({ key: 'Home', preventDefault() {} }))
+  assert.equal(ui.selections.at(-1).reasoningEffort, 'off')
+})
+
+test('Escape closes an open menu', async t => {
+  const ui = await mount(t)
+  await ui.showModels()
+  assert.equal(ui.tree.root.findAllByProps({ role: 'menu' }).length, 1)
+  await act(async () => {
+    // Node ships no KeyboardEvent, and a bare Event carries no `key`.
+    const escape = new Event('keydown')
+    escape.key = 'Escape'
+    ui.document.dispatchEvent(escape)
+  })
+  assert.equal(ui.tree.root.findAllByProps({ role: 'menu' }).length, 0)
 })

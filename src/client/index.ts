@@ -317,6 +317,9 @@ const CSS =
   '.sk5-labelsRow{display:flex;justify-content:space-between;margin-bottom:6px;}' +
   '.sk5-endLabel{font-size:12.5px;font-weight:600;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));}' +
   '.sk5-track{position:relative;height:23px;border-radius:9px!important;background:color-mix(in srgb,var(--dsw-alias-label-primary) 15%,transparent);cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;}' +
+  /* The track is a focusable slider; the ring is the only cue that it has
+     keyboard focus, so it must not be suppressed by the host reset. */
+  '.sk5-track:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px;}' +
   '.sk5-fill{position:absolute;top:0;bottom:0;left:0;border-radius:9px 0 0 9px!important;transition:width .16s ease,opacity .16s ease;pointer-events:none;}' +
   '.sk5-fillEnd{border-radius:9px!important;}' +
   '.sk5-dotHit{position:absolute;top:0;bottom:0;width:16px;transform:translateX(-50%);display:flex;align-items:flex-start;justify-content:center;cursor:pointer;z-index:2;}' +
@@ -662,6 +665,19 @@ export function apply(ctx: any): void {
         }
         document.addEventListener('mousedown', handler)
         return () => document.removeEventListener('mousedown', handler)
+      }, [menu])
+
+      // Escape closes an open menu, the way every other popup in the shell
+      // does. Without it a keyboard user can open the menu but not dismiss it.
+      React.useEffect(() => {
+        if (menu === null) return
+        const handler = (ev: KeyboardEvent) => {
+          if (ev.key !== 'Escape') return
+          ev.stopPropagation()
+          setMenu(null)
+        }
+        document.addEventListener('keydown', handler)
+        return () => document.removeEventListener('keydown', handler)
       }, [menu])
 
       React.useEffect(() => {
@@ -1055,6 +1071,27 @@ export function apply(ctx: any): void {
         window.addEventListener('pointercancel', onWinCancel as any)
         window.addEventListener('blur', onWinCancel as any)
       }
+      /**
+       * Keyboard equivalent of dragging the track. Arrow keys step one level,
+       * Home/End jump to the ends, and the pick is submitted immediately —
+       * the same contract as releasing a drag, so a keyboard user reaches the
+       * same state a pointer user does.
+       */
+      const onTrackKeyDown = (ev: KeyboardEvent) => {
+        if (choices.length === 0 || locked || busy || current === null) return
+        const last = choices.length - 1
+        let next: number
+        if (ev.key === 'ArrowRight' || ev.key === 'ArrowUp') next = Math.min(last, safePosIdx + 1)
+        else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowDown') next = Math.max(0, safePosIdx - 1)
+        else if (ev.key === 'Home') next = 0
+        else if (ev.key === 'End') next = last
+        else return
+        ev.preventDefault()
+        if (next === safePosIdx) return
+        setHoverIdx(next)
+        const picked = choices[next]
+        if (picked !== undefined) onPickEffort(picked.effort)
+      }
 
       const triggerTitle = curGroup !== undefined && curModel !== undefined
         ? curGroup.name + ' / ' + curModel.name + (effectiveEffort !== undefined ? ' · ' + displayLabel : '')
@@ -1149,6 +1186,17 @@ export function apply(ctx: any): void {
                 ref: trackRef, className: 'sk5-track',
                 style: grid === null ? undefined : { height: grid.trackHeight + 'px' },
                 onPointerDown: onTrackDown as any,
+                // The track is the effort control, so it is also the keyboard
+                // control: a pointer-only slider is unusable without a mouse.
+                role: 'slider',
+                tabIndex: locked || busy || current === null ? -1 : 0,
+                'aria-label': tr('effort.title'),
+                'aria-valuemin': 0,
+                'aria-valuemax': Math.max(0, choices.length - 1),
+                'aria-valuenow': safePosIdx,
+                'aria-valuetext': displayLabel,
+                'aria-disabled': locked || busy || current === null ? true : undefined,
+                onKeyDown: onTrackKeyDown as any,
               },
                 React.createElement('div', {
                   className: 'sk5-fill' + (posPct > 96 ? ' sk5-fillEnd' : ''),
