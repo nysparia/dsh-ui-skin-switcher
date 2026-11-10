@@ -369,3 +369,15 @@ test('Escape closes an open menu', async t => {
   })
   assert.equal(ui.tree.root.findAllByProps({ role: 'menu' }).length, 0)
 })
+
+test('the effort popover copy comes from the dictionary, not literals', async t => {
+  const ui = await mount(t)
+  await act(async () => ui.tree.root.findByProps({ className: 'sk5-trigger sk5-triggerEffort' }).props.onClick())
+  const rendered = text(ui.tree.toJSON())
+  // The fixture supplies no `t`, so the Chinese table backs the seat.
+  assert.match(rendered, /强度/, 'the popover heading is translated')
+  assert.match(rendered, /更快/)
+  assert.match(rendered, /更聪明/)
+  assert.doesNotMatch(rendered, /\bFaster\b/, 'no English literal leaks into the Chinese table')
+  assert.doesNotMatch(rendered, /\bSmarter\b/)
+})
