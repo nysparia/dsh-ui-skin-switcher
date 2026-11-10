@@ -15,7 +15,15 @@ jobs:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # tsdown requires ^22.18.0 || >=24.11.0; pin the floor it accepts
+          # rather than whatever 22.x happens to be current.
+          node-version: 22.18.0
       - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm typecheck
       - run: pnpm build
+      # The build must be reproducible: lib/ is committed and shipped, so a
+      # rebuild that differs from the checkout means src/ and lib/ drifted.
+      - run: git diff --exit-code -- lib
       - run: pnpm test
+      # Registration against the real SlotCore of every supported DSH release.
+      - run: pnpm check:compat

@@ -836,7 +836,7 @@ export function apply(ctx: any): void {
           const heights = elements.map(element => measureEffortLineHeight(element))
           elements.forEach((element, index) => {
             const height = heights[index]
-            if (height !== null) element.style.setProperty('--sk5-effort-line-height', height)
+            if (height !== null && height !== undefined) element.style.setProperty('--sk5-effort-line-height', height)
           })
         }
         stabilize()

@@ -37,7 +37,9 @@
   },
   "scripts": {
     "build": "tsdown",
-    "test": "node --test tests/*.test.mjs"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.mjs",
+    "check:compat": "node scripts/check-dsh-compatibility.mjs"
   },
   "license": "MIT",
   "dependencies": {
@@ -47,8 +49,10 @@
     "react": "^18.2.0"
   },
   "devDependencies": {
+    "@types/react": "^18.3.31",
     "react-test-renderer": "18.3.1",
     "tsdown": "^0.22.2",
+    "typescript": "^5.9.3",
     "unrun": "^0.3.1"
   },
   "files": [

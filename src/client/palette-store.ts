@@ -32,10 +32,13 @@ const CSS_VARS: Record<keyof PaletteColors, string> = {
   gridBlink: '--sk5-c-blink',
 }
 
-/** The shipped palette, used when no configuration is served. */
-export const DEFAULT_PALETTE: PaletteColors = /** @type {PaletteColors} */ (
-  deriveFromMaster(DEFAULT_MASTER)
-)
+/**
+ * The shipped palette, used when no configuration is served.
+ *
+ * `deriveFromMaster` answers null only for an unparseable master, and
+ * `DEFAULT_MASTER` is a literal the palette tests pin, so this cannot be null.
+ */
+export const DEFAULT_PALETTE: PaletteColors = deriveFromMaster(DEFAULT_MASTER) as PaletteColors
 
 interface PaletteSnapshot {
   colors: PaletteColors | null
@@ -118,7 +121,9 @@ function storedColor(value: unknown): string | null {
 export function readPaletteConfig(value: unknown): PaletteColors | null {
   if (value === null || typeof value !== 'object') return null
   const section = value as Record<string, unknown>
-  const master = storedColor(section.master) ?? toHex(parseHex(DEFAULT_MASTER))
+  // `storedColor` already answers a parsed `#RRGGBB` or null, so the fallback
+  // is only reached for an unusable stored master — and DEFAULT_MASTER parses.
+  const master = storedColor(section.master) ?? (toHex(parseHex(DEFAULT_MASTER) as { r: number; g: number; b: number }))
   const derived = deriveFromMaster(master)
   if (derived === null) return null
   if (section.mode !== 'custom') return derived

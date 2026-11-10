@@ -73,9 +73,16 @@ function sameDraft(a: Draft, b: Draft): boolean {
   return SLOT_KEYS_ORDER.every((key) => a.custom[key] === b.custom[key])
 }
 
-/** Resolve a draft to the six colours the composer UI shows. */
+/**
+ * Resolve a draft to the six colours the composer UI shows.
+ *
+ * An unparseable master falls back to the shipped one, which always parses, so
+ * the result is never null.
+ * @param draft - the editor's current draft.
+ * @returns the six resolved slots.
+ */
 export function resolveDraft(draft: Draft): PaletteColors {
-  const derived = deriveFromMaster(draft.master) ?? /** @type {PaletteColors} */ (deriveFromMaster(DEFAULT_MASTER))
+  const derived = (deriveFromMaster(draft.master) ?? deriveFromMaster(DEFAULT_MASTER)) as PaletteColors
   if (draft.mode === 'auto') return derived
   const resolved: PaletteColors = { ...derived }
   for (const key of SLOT_KEYS_ORDER) {
