@@ -263,6 +263,14 @@ const CSS =
   '.sk5-trigger:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 10%,transparent);}' +
   '.sk5-trigger:disabled{opacity:.55;cursor:not-allowed;}' +
   '.sk5-triggerName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+  /* Provider-authored model badge: display-only catalog data, toned by the
+     provider's declared emphasis. */
+  '.sk5-badgeWrap{display:inline-flex;align-items:center;gap:6px;min-width:0;}' +
+  '.sk5-badge{flex:none;padding:0 5px;border-radius:5px;font-size:10px;line-height:1.6;font-weight:600;letter-spacing:.02em;border:1px solid transparent;}' +
+  '.sk5-badge-neutral{color:var(--dsw-alias-label-secondary);border-color:var(--dsw-alias-border-l2);}' +
+  '.sk5-badge-info{color:var(--dsw-alias-brand-primary);border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 45%,transparent);}' +
+  '.sk5-badge-success{color:var(--dsw-alias-state-success-primary,var(--dsw-alias-brand-primary));border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary,var(--dsw-alias-brand-primary)) 45%,transparent);}' +
+  '.sk5-badge-warning{color:var(--dsw-alias-state-warn-primary,var(--dsw-alias-label-secondary));border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary,var(--dsw-alias-label-secondary)) 45%,transparent);}' +
   '.sk5-triggerEffort{color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary));font-weight:600;margin-left:-6px;line-height:var(--sk5-effort-line-height,inherit);}' +
   '.sk5-drop{font-family:"Space Grotesk",var(--dsw-font-family,ui-sans-serif,system-ui,sans-serif);position:absolute;bottom:calc(100% + 6px);right:0;border-radius:14px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);box-shadow:0 10px 32px rgb(0 0 0 / .35);z-index:1200;color:var(--dsw-alias-label-primary);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);}' +
   '.sk5-model{width:256px;}' +
@@ -581,6 +589,21 @@ export function apply(ctx: any): void {
   ctx.effect(() => ctx.locale.register(NS, DICTS), 'ui-skin-switcher: dictionaries')
   bindColorSettings(ctx)
 
+  /**
+   * Resolve a provider-authored badge label for the active locale. The badge
+   * text is either a literal or a translation map with a required English
+   * entry, and the locale service owns the fallback chain — so this defers to
+   * it when present and falls back to the English entry otherwise.
+   * @param text - the badge's literal text or translations.
+   * @returns the text to display.
+   */
+  const resolveBadgeText = (text: any): string => {
+    if (typeof text === 'string') return text
+    if (text === null || typeof text !== 'object') return ''
+    if (typeof ctx.locale?.resolveText === 'function') return ctx.locale.resolveText(text)
+    return typeof text.en === 'string' ? text.en : ''
+  }
+
   ctx.slots.inject('conversation.input.model', () => ctx.slots.register(
     { name: 'conversation.input.model', priority: -1, locale: NS },
     (props: any) => {
@@ -738,6 +761,24 @@ export function apply(ctx: any): void {
        * "this vendor could not be reached".
        */
       const failures = state.failures ?? []
+      /**
+       * A model name plus its provider-authored badge, when it declares one.
+       * The badge is display-only catalog data; dropping it loses a
+       * distinction the provider asked to show (for example a preview tag).
+       * @param model - the catalog model.
+       * @returns the name node.
+       */
+      const modelName = (model: any) => {
+        const badge = model.badge
+        const label = badge === undefined ? '' : resolveBadgeText(badge.text)
+        if (badge === undefined || label === '') return React.createElement('span', null, model.name)
+        return React.createElement('span', { className: 'sk5-badgeWrap' },
+          React.createElement('span', null, model.name),
+          React.createElement('span', {
+            className: 'sk5-badge sk5-badge-' + (badge.tone ?? 'neutral'),
+          }, label),
+        )
+      }
       const curGroup = current === null ? undefined : groups.find((g: any) => g.id === current.provider)
       const curModel = current === null ? undefined : findModel(groups, current.provider, current.model)
       const modelLabel = curModel !== undefined ? curModel.name : (current !== null && current.model !== '' ? current.model : tr('trigger.fallbackModel'))
@@ -1025,7 +1066,8 @@ export function apply(ctx: any): void {
             type: 'button', className: 'sk5-trigger', disabled: locked || busyKind === 'model', title: triggerTitle,
             'aria-haspopup': 'menu', 'aria-expanded': menu === 'model',
             onClick: () => setMenu((m: any) => (m === 'model' ? null : 'model')),
-          }, React.createElement('span', { className: 'sk5-triggerName' }, modelLabel)),
+          }, React.createElement('span', { className: 'sk5-triggerName' },
+            curModel !== undefined ? modelName(curModel) : modelLabel)),
           reasoning !== undefined && choices.length > 0
             ? React.createElement('button', {
                 ref: effortTriggerRef,
@@ -1066,7 +1108,7 @@ export function apply(ctx: any): void {
                       onClick: () => onPickModel(m, g),
                     },
                       React.createElement('span', { style: { minWidth: 0 } },
-                        React.createElement('div', null, m.name),
+                        React.createElement('div', null, modelName(m)),
                         m.description !== undefined ? React.createElement('div', { className: 'sk5-rowDesc' }, m.description) : null,
                       ),
                       active ? React.createElement('span', { className: 'sk5-check' }, '✓') : null,

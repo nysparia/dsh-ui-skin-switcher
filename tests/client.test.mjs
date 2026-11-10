@@ -307,3 +307,28 @@ test('a healthy catalog renders no failure rows', async t => {
   await ui.showModels()
   assert.equal(ui.tree.root.findAllByProps({ className: 'sk5-retry' }).length, 0)
 })
+
+test('a provider-authored badge is rendered beside the model name', async t => {
+  const ui = await mount(t)
+  const badged = {
+    ...ui.official,
+    badge: { text: { en: 'Preview', zh: '预览' }, tone: 'info' },
+  }
+  await ui.update({
+    ...ui.snapshot(),
+    groups: [{ id: 'deepseek-official', name: 'DeepSeek', models: [badged] }],
+  })
+  await ui.showModels()
+  const chips = ui.tree.root.findAllByProps({ className: 'sk5-badge sk5-badge-info' })
+  // The current model appears twice while the menu is open: on the trigger
+  // and as the selected row.
+  assert.equal(chips.length, 2, 'the badge reaches both the trigger and the menu row')
+  assert.match(text(ui.tree.toJSON()), /Preview/)
+})
+
+test('a model without a badge renders its name alone', async t => {
+  const ui = await mount(t)
+  await ui.showModels()
+  assert.equal(ui.tree.root.findAllByProps({ className: 'sk5-badgeWrap' }).length, 0)
+  assert.match(text(ui.tree.toJSON()), /DeepSeek-V4\.1-Flash/)
+})
