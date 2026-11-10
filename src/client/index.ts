@@ -22,10 +22,13 @@ import { DEFAULT_PALETTE, readFollowSeat, readPaletteConfig, setPalette, usePale
  * nothing, every `ctx.<service>` below stays undefined, and the shell reports
  * the package as "is waiting for activation".
  *
- * Same six names the first-party `@deepseek-ai/dsh-client-ui-model-selection`
- * declares; `modelDirectories` is the Service that plugin provides.
+ * Only what this half actually touches is declared. `modelDirectories` is the
+ * Service the first-party model-selection plugin provides, and it already owns
+ * the `remote` / `remote.session` faces this seat would otherwise need — the
+ * seat reads the directory and never calls the RPC itself. Declaring those two
+ * here would make the whole plugin wait for services it does not use.
  */
-export const inject = ['locale', 'modelDirectories', 'remote', 'remote.session', 'sessions', 'slots']
+export const inject = ['locale', 'modelDirectories', 'sessions', 'slots']
 
 /** Dictionary namespace owned by this plugin. */
 const NS = 'ui-skin-switcher'
@@ -883,10 +886,8 @@ export function apply(ctx: any): void {
          *
          * noiseAmp: how far the noise shifts a cell's progress as a fraction of
          * the full sweep — the roughness of the frontier.
-         * noiseFreq: noise cells per matrix cell — larger means finer blobs.
          */
         const noiseLeadCols = 6
-        const noiseFreq = 0.45
         /** Per-cell random stagger, ± this many ms: perforates the front edge. */
         const staggerMs = 80
         /** Integer-lattice hash folded into [0,1). */
@@ -967,7 +968,6 @@ export function apply(ctx: any): void {
             out.push({
               key: r + '-' + c,
               flashLight: 'rgb(' + lc[0] + ',' + lc[1] + ',' + lc[2] + ')',
-              flashDeep: 'rgb(' + deep.join(',') + ')',
               animationDelay: flashDelay,
               flashDuration: flashDuration,
               appearDelay: appearDelay,
@@ -1223,8 +1223,14 @@ export function apply(ctx: any): void {
                       matrixCells.map((sq: any) => React.createElement('div', { key: sq.key, className: 'sk5-cell', style: { animationDelay: sq.appearDelay } },
                         React.createElement('div', {
                           className: 'sk5-sq',
-                          style: { background: 'var(--sk5-c-grid,var(--dsw-static-deepseek-500))', opacity: sq.fade, animationDelay: sq.animationDelay, animationDuration: sq.flashDuration, borderRadius: grid.radius + 'px', '--flash-light': sq.flashLight,
-            '--flash-deep': sq.flashDeep },
+                          style: {
+                            background: 'var(--sk5-c-grid,var(--dsw-static-deepseek-500))',
+                            opacity: sq.fade,
+                            animationDelay: sq.animationDelay,
+                            animationDuration: sq.flashDuration,
+                            borderRadius: grid.radius + 'px',
+                            '--flash-light': sq.flashLight,
+                          },
                         }),
                       )),
                     )

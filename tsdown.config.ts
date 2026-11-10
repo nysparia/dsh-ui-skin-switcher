@@ -3,8 +3,12 @@ import { defineConfig } from 'tsdown'
 /**
  * Self-contained build for the standalone repository. Unlike the monorepo
  * preset (which imports shared config from ../tsdown.client.ts), this config
- * has no references outside the repo, so `pnpm install` of a git checkout can
- * run it through the package's own `prepare` script.
+ * has no references outside the repo, so a git checkout builds with nothing
+ * but its own devDependencies.
+ *
+ * `lib/` is committed and shipped prebuilt, so a source install needs no build
+ * step and there is no `prepare` script: run `pnpm build` after editing `src/`
+ * and commit the result alongside it.
  *
  * Outputs (matching the runtime contract dsh expects):
  * - lib/index.js                   ESM node half (no runtime imports)
