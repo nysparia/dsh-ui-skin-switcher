@@ -381,3 +381,67 @@ test('the effort popover copy comes from the dictionary, not literals', async t 
   assert.doesNotMatch(rendered, /\bFaster\b/, 'no English literal leaks into the Chinese table')
   assert.doesNotMatch(rendered, /\bSmarter\b/)
 })
+
+test('a malformed badge never takes the seat down', async t => {
+  const ui = await mount(t)
+  const base = ui.official
+  const cases = [
+    ['null badge', null],
+    ['non-object badge', 'oops'],
+    ['numeric text', { text: 42, tone: 'info' }],
+    ['empty text map', { text: {}, tone: 'info' }],
+    ['null text', { text: null, tone: 'info' }],
+  ]
+  for (const [label, badge] of cases) {
+    await ui.update({
+      ...ui.snapshot(),
+      groups: [{ id: 'deepseek-official', name: 'DeepSeek', models: [{ ...base, badge }] }],
+    })
+    await ui.showModels()
+    assert.match(text(ui.tree.toJSON()), /DeepSeek-V4\.1-Flash/, `${label} must still render the name`)
+    assert.equal(
+      ui.tree.root.findAllByProps({ className: 'sk5-badgeWrap' }).length, 0,
+      `${label} must render no badge`,
+    )
+  }
+})
+
+test('an unknown badge tone falls back to neutral instead of an unstyled class', async t => {
+  const ui = await mount(t)
+  await ui.update({
+    ...ui.snapshot(),
+    groups: [{
+      id: 'deepseek-official', name: 'DeepSeek',
+      models: [{ ...ui.official, badge: { text: 'X', tone: 'bogus' } }],
+    }],
+  })
+  await ui.showModels()
+  const chips = ui.tree.root.findAll(
+    (node) => typeof node.props?.className === 'string' && node.props.className.startsWith('sk5-badge '),
+  )
+  assert.ok(chips.length > 0)
+  assert.ok(chips.every((chip) => chip.props.className === 'sk5-badge sk5-badge-neutral'))
+})
+
+test('a malformed catalog payload never takes the seat down', async t => {
+  const ui = await mount(t)
+  const base = ui.snapshot()
+  const cases = [
+    ['null groups', { groups: null }],
+    ['non-array groups', { groups: 'x' }],
+    ['null group', { groups: [null] }],
+    ['group without models', { groups: [{ id: 'p', name: 'P' }] }],
+    ['null models', { groups: [{ id: 'p', name: 'P', models: null }] }],
+    ['null model', { groups: [{ id: 'p', name: 'P', models: [null] }] }],
+    ['null failure', { failures: [null] }],
+    ['non-array failures', { failures: 'x' }],
+  ]
+  for (const [label, patch] of cases) {
+    await ui.update({ ...base, ...patch })
+    await ui.showModels()
+    assert.ok(
+      ui.tree.root.findAllByProps({ className: 'sk5-trigger' }).length > 0,
+      `${label} must still render the seat`,
+    )
+  }
+})

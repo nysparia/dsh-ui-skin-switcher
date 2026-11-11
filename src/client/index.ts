@@ -46,7 +46,6 @@ const DICTS: Record<'zh' | 'en', Record<string, string>> = {
     'menu.models': '模型',
     'status.loading': '加载中…',
     'status.noModels': '暂无可用模型',
-    'status.groupFailed': '加载失败',
     'status.retry': '重试',
     'help.aria': '思考强度说明',
     'help.text': '调节模型推理深度，低强度回复快、内容简洁；高强度思考更全面，适合复杂问题，响应会稍慢。',
@@ -93,7 +92,6 @@ const DICTS: Record<'zh' | 'en', Record<string, string>> = {
     'menu.models': 'Models',
     'status.loading': 'Loading…',
     'status.noModels': 'No models available',
-    'status.groupFailed': 'Failed to load',
     'status.retry': 'Retry',
     'help.aria': 'About reasoning effort',
     'help.text': 'Adjusts how deeply the model reasons: lower effort answers faster and more concisely, while higher effort thinks more thoroughly for complex problems and responds a little slower.',
@@ -145,6 +143,13 @@ const MATRIX_MARGIN_DESIGN = 0.5
 const FLASH_CYCLE_S = 1.7
 /** Per-cell cycle spread (±8%): drifts the phases apart so no pattern repeats. */
 const FLASH_JITTER = 0.08
+
+/**
+ * Badge tones the stylesheet defines a rule for. A provider may declare any
+ * string; anything outside this set falls back to `neutral` so the chip is
+ * never left with a class that has no styling.
+ */
+const BADGE_TONES = new Set(['neutral', 'info', 'success', 'warning'])
 
 /** One resolved dot-matrix layout; every length is CSS px, derived from whole device pixels. */
 interface MatrixLayout {
@@ -606,13 +611,25 @@ export function apply(ctx: any): void {
    * text is either a literal or a translation map with a required English
    * entry, and the locale service owns the fallback chain — so this defers to
    * it when present and falls back to the English entry otherwise.
+   *
+   * Anything that is not a string or a plain object resolves to the empty
+   * string, which the caller reads as "no badge": the payload comes from a
+   * provider and is not bound by the declared type.
    * @param text - the badge's literal text or translations.
-   * @returns the text to display.
+   * @returns the text to display, or '' when there is nothing usable.
    */
   const resolveBadgeText = (text: any): string => {
     if (typeof text === 'string') return text
     if (text === null || typeof text !== 'object') return ''
-    if (typeof ctx.locale?.resolveText === 'function') return ctx.locale.resolveText(text)
+    if (typeof ctx.locale?.resolveText === 'function') {
+      try {
+        const resolved = ctx.locale.resolveText(text)
+        return typeof resolved === 'string' ? resolved : ''
+      } catch {
+        // A malformed translation map must not take the whole seat down.
+        return typeof text.en === 'string' ? text.en : ''
+      }
+    }
     return typeof text.en === 'string' ? text.en : ''
   }
 
@@ -774,7 +791,18 @@ export function apply(ctx: any): void {
         )
       }
 
-      const groups = state.groups
+      /**
+       * The catalog is provider-supplied, so its shape is normalised here
+       * rather than trusted: a malformed group or model is dropped instead of
+       * dereferenced, because one bad entry must not blank the whole seat.
+       */
+      const groups = (Array.isArray(state.groups) ? state.groups : [])
+        .filter((g: any) => g !== null && typeof g === 'object')
+        .map((g: any) => ({
+          ...g,
+          models: (Array.isArray(g.models) ? g.models : [])
+            .filter((m: any) => m !== null && typeof m === 'object'),
+        }))
       const current = state.current
       /** Selection failures are local; catalog failures live on the shared store. */
       const shownError = error !== null ? error : state.error
@@ -785,23 +813,30 @@ export function apply(ctx: any): void {
        * from the menu, which reads as "this vendor has no models" rather than
        * "this vendor could not be reached".
        */
-      const failures = state.failures ?? []
+      const failures = Array.isArray(state.failures) ? state.failures : []
       /**
        * A model name plus its provider-authored badge, when it declares one.
        * The badge is display-only catalog data; dropping it loses a
        * distinction the provider asked to show (for example a preview tag).
+       *
+       * The catalog arrives from a provider, so its shape is not trusted: a
+       * `null` badge or a non-object one is treated as "no badge" rather than
+       * dereferenced. The declared type says `badge?`, which excludes null,
+       * but a runtime payload is not bound by it.
        * @param model - the catalog model.
        * @returns the name node.
        */
       const modelName = (model: any) => {
         const badge = model.badge
-        const label = badge === undefined ? '' : resolveBadgeText(badge.text)
-        if (badge === undefined || label === '') return React.createElement('span', null, model.name)
+        const usable = badge !== null && typeof badge === 'object'
+        const label = usable ? resolveBadgeText(badge.text) : ''
+        if (!usable || label === '') return React.createElement('span', null, model.name)
+        // Only the tones the stylesheet defines; an unknown one would emit a
+        // class with no rule and render the chip unstyled.
+        const tone = BADGE_TONES.has(badge.tone) ? badge.tone : 'neutral'
         return React.createElement('span', { className: 'sk5-badgeWrap' },
           React.createElement('span', null, model.name),
-          React.createElement('span', {
-            className: 'sk5-badge sk5-badge-' + (badge.tone ?? 'neutral'),
-          }, label),
+          React.createElement('span', { className: 'sk5-badge sk5-badge-' + tone }, label),
         )
       }
       const curGroup = current === null ? undefined : groups.find((g: any) => g.id === current.provider)
@@ -1132,16 +1167,23 @@ export function apply(ctx: any): void {
                 !loaded && shownError === null ? React.createElement('div', { className: 'sk5-status' }, tr('status.loading')) : null,
                 shownError !== null ? React.createElement('div', { className: 'sk5-err' }, shownError) : null,
                 loaded && groups.length === 0 ? React.createElement('div', { className: 'sk5-status' }, tr('status.noModels')) : null,
-                loaded ? failures.map((f: any) => React.createElement('div', { key: 'fail:' + f.id, className: 'sk5-fail' },
-                  React.createElement('span', { className: 'sk5-failText' },
-                    React.createElement('span', { className: 'sk5-failName' }, f.name),
-                    React.createElement('span', { className: 'sk5-failMsg' }, f.message),
-                  ),
-                  React.createElement('button', {
-                    type: 'button', className: 'sk5-retry', disabled: busy,
-                    onClick: () => load(),
-                  }, tr('status.retry')),
-                )) : null,
+                loaded ? failures
+                  // The catalog comes from a provider, so a malformed entry is
+                  // dropped rather than dereferenced: one bad row must not
+                  // blank the whole menu.
+                  .filter((f: any) => f !== null && typeof f === 'object')
+                  .map((f: any, index: number) => React.createElement('div', {
+                    key: 'fail:' + (typeof f.id === 'string' ? f.id : index), className: 'sk5-fail',
+                  },
+                    React.createElement('span', { className: 'sk5-failText' },
+                      React.createElement('span', { className: 'sk5-failName' }, typeof f.name === 'string' ? f.name : ''),
+                      React.createElement('span', { className: 'sk5-failMsg' }, typeof f.message === 'string' ? f.message : ''),
+                    ),
+                    React.createElement('button', {
+                      type: 'button', className: 'sk5-retry', disabled: busy,
+                      onClick: () => load(),
+                    }, tr('status.retry')),
+                  )) : null,
                 loaded ? groups.map((g: any) => React.createElement('div', { key: g.id },
                   React.createElement('div', { className: 'sk5-group' }, g.name),
                   g.models.map((m: any) => {
