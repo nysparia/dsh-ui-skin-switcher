@@ -4,7 +4,10 @@
 # profile dependency, and therefore no pnpm release-age gate:
 #
 #   pnpm run build
-#   dsh --profile <any profile> --patch <this file> --no-open
+#   pnpm dsh --profile <any profile> --patch <this file> --no-open
+#
+# The `pnpm` prefix is what runs the dsh script from a DSH source checkout; with
+# a global install, drop it and call `dsh` directly.
 #
 # `name` is the package id, not the path of the built file. Both spellings load
 # the node half, but `dsh-client-modules` finds the browser half by resolving the

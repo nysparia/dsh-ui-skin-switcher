@@ -52,7 +52,7 @@ https://github.com/user-attachments/assets/3e60e874-4d08-44b3-be00-5e5ab213187c
 **Web** (`dsh web`):
 
 ```sh
-dsh plugin --profile web add @domitor-syh/dsh-ui-skin-switcher
+pnpm dsh plugin --profile web add @domitor-syh/dsh-ui-skin-switcher
 ```
 
 **Desktop** (official channel) — paste the following package name into the desktop app's plugin installer to install or update:
@@ -61,7 +61,9 @@ dsh plugin --profile web add @domitor-syh/dsh-ui-skin-switcher
 @domitor-syh/dsh-ui-skin-switcher
 ```
 
-After installing: on Web, restart `dsh web` and refresh the page; on Desktop, restart the app. When running DSH from source, prefix the Web installation command with `pnpm`.
+After installing: on Web, restart `dsh web` and refresh the page; on Desktop, restart the app.
+
+> The command above carries the `pnpm` prefix, which is how it runs from a DSH source checkout. When `dsh` is already on `PATH` (a global install), drop the prefix and run `dsh plugin ...` directly.
 
 The current adaptation target is **DSH 0.2.2-rc.1**, with a declared compatibility range of `>=0.1.5-alpha.1`. Core API contracts were checked against source for `0.1.5-alpha.1`, `0.2.0-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.3`, `0.2.1-rc.5`, and `0.2.2-rc.1`; other builds still need confirmation, and future versions have not all been runtime-tested.
 

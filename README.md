@@ -58,7 +58,7 @@ https://github.com/user-attachments/assets/3e60e874-4d08-44b3-be00-5e5ab213187c
 **Web 端**（`dsh web`）：
 
 ```sh
-dsh plugin --profile web add @domitor-syh/dsh-ui-skin-switcher
+pnpm dsh plugin --profile web add @domitor-syh/dsh-ui-skin-switcher
 ```
 
 **桌面端**（官方渠道）——在桌面应用的插件安装处粘贴以下包名，即可安装或更新：
@@ -67,7 +67,9 @@ dsh plugin --profile web add @domitor-syh/dsh-ui-skin-switcher
 @domitor-syh/dsh-ui-skin-switcher
 ```
 
-安装后：Web 端重启 `dsh web` 并刷新页面；桌面端重启桌面应用。从 DSH 源码运行 Web 安装命令时，在命令前加 `pnpm`。
+安装后：Web 端重启 `dsh web` 并刷新页面；桌面端重启桌面应用。
+
+> 上面的命令带 `pnpm` 前缀，适用于从 DSH 源码目录运行。若 `dsh` 已在 `PATH` 中（全局安装），去掉 `pnpm` 直接执行 `dsh plugin ...` 即可。
 
 当前适配目标为 **DSH 0.2.2-rc.1**，声明的兼容范围为 `>=0.1.5-alpha.1`。该范围基于 `0.1.5-alpha.1`、`0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.3`、`0.2.1-rc.5` 与 `0.2.2-rc.1` 的核心接口源码核对；其他构建仍需确认兼容性，未来版本也未全部实测。
 
