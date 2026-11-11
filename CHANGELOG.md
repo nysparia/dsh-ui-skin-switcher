@@ -4,6 +4,40 @@
 
 This project follows [Semantic Versioning](https://semver.org/). Pick a version below to see what changed.
 
+## [0.4.1-fork.1] — 2026-11-11
+
+本版本是本仓库的 fork，基于 `0.4.0` 加上一轮审计修复。版本号的 `-fork.1` 后缀标明它不是上游发布版；因为装的是 git 源，DSH 不会把它当作可从 registry 更新的包。
+
+This is a fork of the repository: `0.4.0` plus one round of audit fixes. The `-fork.1` suffix marks it as not an upstream release. Installed from git, DSH never treats it as a registry-updatable package.
+
+**中文**
+
+- 修复「已保存」提示永远不出现：颜色切换器原本逐字段写入配置，每次写入都会推进命名空间 revision，触发组件重新采纳 Host 值并清掉刚设置的提示。现在八项字段作为一次原子 `mutate` 提交，并区分「本次保存导致的 revision」与「外部改动」。
+- 修复保存失败后「应用」按钮永久禁用：格式错误与写入失败原本共用同一个 state，Host 拒绝一次写入就把按钮锁死、还把色码框标红。现在两者分开——格式错误才阻止保存，写入失败可直接重试。
+- 修复切换「跟随档位颜色」开关会丢弃未保存的颜色编辑：开关写入自己的字段同样会推进 revision，导致组件用 Host 值覆盖草稿。现在只有配色真的变化时才采纳 Host 值。
+- 补齐 provider 目录加载失败的提示：原本失败的 provider 会从菜单里静默消失，现在列出名称、失败原因和重试按钮。
+- 补齐模型徽章显示：provider 声明的 `badge` 原本被丢弃，现在渲染在触发器和菜单行上，并按声明的 tone 着色。
+- 思考强度滑块支持键盘操作：轨道现在有 `role="slider"`、可聚焦、报告 `aria-valuenow`，方向键逐档、Home/End 跳到两端；Escape 关闭任意打开中的菜单。
+- 思考强度弹层的「强度 / 更快 / 更聪明」三个文案接入双语字典，不再是写死的英文。
+- 移除未使用的 `remote` / `remote.session` 注入声明：本插件通过 `modelDirectories` 读取目录，不直接调 RPC，声明它们只会让插件多等待两个用不到的服务。
+- 移除死代码：未使用的 `noiseFreq` 常量、从未被任何 CSS 规则读取的 `--flash-deep` 变量。
+- 引入 TypeScript 类型检查（`tsc --noEmit`）并接入 CI；顺带修掉 5 个一直被掩盖的类型错误。CI 现在还校验重建产物与提交的 `lib/` 一致，并运行真实 SlotCore 兼容性检查。
+- 补上内嵌 Space Grotesk 字体的 SIL OFL 许可证全文与第三方声明；此前只带 MIT LICENSE，属许可合规缺口。
+
+**English**
+
+- Fixed the "Saved" confirmation never appearing: the colour section wrote one field per call, and every write advanced the namespace revision, which made the component re-adopt the Host value and clear the note the save had just set. The eight fields now go in one atomic `mutate`, and a revision the save itself caused is told apart from an outside edit.
+- Fixed Apply staying disabled forever after a refused save: format errors and write failures shared one state, so one refused Host write locked the button and painted the code field red. They are now separate — only an unparseable code blocks saving, and a refused write is directly retryable.
+- Fixed toggling the seat-follow switch discarding unsaved colour edits: the switch writes its own field, which also advances the revision and made the component overwrite the draft with the Host value. The Host value is now adopted only when the colours actually changed.
+- Added the missing provider-catalog failure rows: a failed provider used to vanish from the menu silently; it is now listed with its name, the failure reason, and a retry control.
+- Added model badges: a provider-declared `badge` used to be dropped; it now renders on the trigger and menu rows, toned by the declared emphasis.
+- The effort slider is keyboard operable: the track is a real `role="slider"` with a focus ring and `aria-valuenow`, arrow keys step one level, Home/End jump to the ends, and Escape closes any open menu.
+- The effort popover's heading and both end captions now come from the bilingual dictionary instead of hardcoded English literals.
+- Dropped the unused `remote` / `remote.session` injections: this plugin reads the catalog through `modelDirectories` and never calls the RPC itself, so declaring them only made it wait on services it does not use.
+- Removed dead code: the unused `noiseFreq` constant and the `--flash-deep` custom property no CSS rule ever read.
+- Added TypeScript type checking (`tsc --noEmit`) and wired it into CI, fixing five type errors it exposed. CI now also verifies a rebuild matches the committed `lib/` and runs the real-SlotCore compatibility check.
+- Shipped the SIL OFL text and third-party notice for the embedded Space Grotesk subset; previously only the MIT LICENSE was present, which was a compliance gap.
+
 ## [0.4.0] — 2026-11-10
 
 **中文**
